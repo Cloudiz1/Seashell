@@ -1,15 +1,20 @@
 use std::io;
 use std::io::Write;
 
+mod lexer;
+
 fn main() {
-    loop {
-        print!("> ");
-        io::stdout().flush().unwrap();
+    lexer::tokenizer("|!!".to_string());
 
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).expect("Not a valid string");
+    // loop {
+    //     print!("> ");
+    //     io::stdout().flush().unwrap();
 
-        let cmd: Vec<_> = input.split(" ").collect();
-        println!("{:?}", cmd);
-    }
+    //     let mut input = String::new();
+    //     io::stdin().read_line(&mut input).expect("Not a valid string");
+    
+    //     // input = input.replace("\r", "").replace("\n", "");
+    //     // let cmd: Vec<_> = input.split(" ").collect();
+    //     // println!("{:?}", cmd);
+    // }
 }
