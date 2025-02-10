@@ -4,7 +4,12 @@ use std::io::Write;
 mod lexer;
 
 fn main() {
-    lexer::tokenizer("|!!".to_string());
+    // lexer::tokenizer("|!!".to_string());
+    let input: Vec<char> = "ls -la \"path to directory\"".chars().collect(); 
+    lexer::Tokenizer::init(input);
+
+    // let out: Vec<char> = "test".chars().collect();
+    // println!("{:?}", out);
 
     // loop {
     //     print!("> ");
