@@ -1,12 +1,16 @@
 #[derive(Debug)]
 pub enum TokenType {
     StringLiteral,
+    Number,
     EscapedCharacter,
     Arg,
     SingleHyphen,
     DoubleHyphen,
+    Apostrophe,
+    QuotationMark,
     Pipe,
-    Bang
+    Bang,
+    EndOfString
 }
 
 #[derive(Debug)]
@@ -23,8 +27,8 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
-    pub fn init(input: Vec<char>) -> Tokenizer {
-        return let tokenizer = Tokenizer {
+    pub fn new(input: Vec<char>) -> Tokenizer {
+        return tokenizer = Tokenizer {
             curr: input[0],
             input: input,
             index: 0
@@ -34,35 +38,52 @@ impl Tokenizer {
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens: Vec<Token> = Vec::new();
         
+
+        tokens
     }
 
     fn get_next_token(&mut self) -> Token {
-        if is_alphabetic(self.curr) {
-            self.get_word();
+        if self.curr.is_alphabetic() {
+            self.get_string(TokenType::StringLiteral)
         }
-        else if is_numberic(self.curr) {
-            self.get_number();
+        else if self.curr.is_numeric() {
+            self.get_number(TokenType::Number)
         }
+
         else {
             match self.curr {
-                "\"" => self.get_string("\"");
-                "\'" => self.get_string("\'");
+                '\"' => self.scan_until(TokenType::QuotationMark),
+                '\'' => self.scan_until(TokenType::Apostrophe),
 
-                "!" => self.create_token(TokenType::Bang, None);
-                "-" => {
-                    if input[index + 1] == "-" {
-                        self.get_flag(TokenType::SingleHyphen);
+                '!' => self.create_token(TokenType::Bang, None),
+                '-' => {
+                    if self.input[self.index + 1] == '-' {
+                        self.get_string(TokenType::DoubleHyphen)
                     }
                     else
                     {
-                        self.get_flag(TokenType::DoubleHypen);
+                        self.get_string(TokenType::SingleHyphen)
                     }
+                },
+                '\\' => {
+                    if self.index + 1 == self.input.length {
+                        self.create_token(TokenType::EndOfString, None)
+                    }
+                    
+                    self.create_token(TokenType::EscapedCharacter, Some(self.input[self.index + 1].to_string()))
                 }
-                "\\" => self.create_token(TokenType::EscapedCharacter, self.input[index + 1]);
-
             }
         }
     }
+
+    fn create_token(&mut self, token_type: TokenType, value: Option<String>) -> Token {
+        return Token {
+            token_type: token_type,
+            value: value
+        }
+    }
+
+    fn get_string(&mut self)
 }
 
 // pub fn tokenizer(input: String) -> Vec<Token> {
