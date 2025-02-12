@@ -4,22 +4,15 @@ use std::io::Write;
 mod lexer;
 
 fn main() {
-    // lexer::tokenizer("|!!".to_string());
-    let input: Vec<char> = "ls -la \"path to directory\"".chars().collect(); 
-    lexer::Tokenizer::init(input);
-
-    // let out: Vec<char> = "test".chars().collect();
-    // println!("{:?}", out);
-
-    // loop {
-    //     print!("> ");
-    //     io::stdout().flush().unwrap();
-
-    //     let mut input = String::new();
-    //     io::stdin().read_line(&mut input).expect("Not a valid string");
+    // print!("> ");
+    // let mut input: String = String::new();
+    // io::stdout().flush();
     
-    //     // input = input.replace("\r", "").replace("\n", "");
-    //     // let cmd: Vec<_> = input.split(" ").collect();
-    //     // println!("{:?}", cmd);
-    // }
+    // io::stdin().read_line(&mut input).expect("failed to read line");
+    // input = input.replace("\n", "");
+
+    let mut tokenizer = lexer::Tokenizer::new("ls -la".to_string());
+    let tokens = tokenizer.tokenize();
+    println!("{:?}", tokens);
+    // tokenizer.debug();
 }

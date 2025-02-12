@@ -1,78 +1,118 @@
 #[derive(Debug)]
-pub enum TokenType {
-    StringLiteral,
-    Number,
-    EscapedCharacter,
-    Arg,
+enum TokenType {
+    DoubleQuote,
+    SingleQuote,
+    Bang, 
+    Pipe,
     SingleHyphen,
     DoubleHyphen,
-    Apostrophe,
-    QuotationMark,
-    Pipe,
-    Bang,
-    EndOfString
+    Space,
+    StringLiteral
 }
 
 #[derive(Debug)]
 pub struct Token {
-    pub token_type: TokenType,
-    pub value: Option<String>
+    token_type: TokenType,
+    value: Option<String>
 }
 
 #[derive(Debug)]
 pub struct Tokenizer {
     input: Vec<char>,
-    curr: char,
-    index: usize
+    index: usize,
+    curr: Option<char>,
+    input_len: usize
 }
 
 impl Tokenizer {
-    pub fn new(input: Vec<char>) -> Tokenizer {
-        return tokenizer = Tokenizer {
-            curr: input[0],
-            input: input,
+    pub fn new(input: String) -> Tokenizer {
+        let chars: Vec<char> = input.chars().collect();
+        let mut c0: Option<char>;
+
+        if chars.len() == 0 {
+            c0 = None;
+        }
+        else 
+        {
+            c0 = Some(chars[0]);
+        }
+
+        return Tokenizer {
+            curr: c0,
+            input_len: chars.len(),
+            input: chars,
             index: 0
-        };
+        }
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens: Vec<Token> = Vec::new();
-        
 
-        tokens
-    }
-
-    fn get_next_token(&mut self) -> Token {
-        if self.curr.is_alphabetic() {
-            self.get_string(TokenType::StringLiteral)
-        }
-        else if self.curr.is_numeric() {
-            self.get_number(TokenType::Number)
-        }
-
-        else {
+        loop {
             match self.curr {
-                '\"' => self.scan_until(TokenType::QuotationMark),
-                '\'' => self.scan_until(TokenType::Apostrophe),
+                Some(c) => {
+                    match c {
+                        '-' => {
+                            if self.at_eol() {
+                                tokens.push(self.create_token(TokenType::SingleHyphen, None));
+                            }
+                            else if self.peek(1).unwrap() == '-' {
+                                tokens.push(self.create_token(TokenType::DoubleHyphen, None));
+                                self.skip(1);
+                            }
+                            else {
+                                tokens.push(self.create_token(TokenType::SingleHyphen, None));
+                            }
+                        },
+                        '!' => tokens.push(self.create_token(TokenType::Bang, None)),
+                        '|' => tokens.push(self.create_token(TokenType::Pipe, None)),
+                        '\''=> tokens.push(self.create_token(TokenType::SingleQuote, None)),
+                        '\"'=> tokens.push(self.create_token(TokenType::DoubleQuote, None)),
+                        ' ' => tokens.push(self.create_token(TokenType::Space, None)),
 
-                '!' => self.create_token(TokenType::Bang, None),
-                '-' => {
-                    if self.input[self.index + 1] == '-' {
-                        self.get_string(TokenType::DoubleHyphen)
-                    }
-                    else
-                    {
-                        self.get_string(TokenType::SingleHyphen)
-                    }
-                },
-                '\\' => {
-                    if self.index + 1 == self.input.length {
-                        self.create_token(TokenType::EndOfString, None)
+                        _ => {
+                            let value = Some(self.get_string());
+                            let token = self.create_token(TokenType::StringLiteral, value);
+                            tokens.push(token);
+                        }
                     }
                     
-                    self.create_token(TokenType::EscapedCharacter, Some(self.input[self.index + 1].to_string()))
+                    if self.at_eol() {
+                        return tokens;
+                    }
+
+                    self.get_next();
+                }
+                None => {
+                    return tokens;
                 }
             }
+        }
+    }
+
+    fn get_next(&mut self) -> Option<char> {
+        if self.at_eol() {
+            self.curr = None;
+            return self.curr;
+        }
+
+        self.index += 1;
+        self.curr = Some(self.input[self.index]);
+        self.curr
+    }
+
+    fn get_string(&mut self) -> String {
+        let stop: Vec<char> = vec!['\'', '\"', ' '];
+        let mut out: String = String::new();
+
+        out.push(self.curr.unwrap());
+
+        loop {
+            if self.at_eol() || stop.contains(&self.peek(1).unwrap()) {
+                return out;
+            }
+
+            out.push(self.get_next().unwrap());
         }
     }
 
@@ -83,28 +123,37 @@ impl Tokenizer {
         }
     }
 
-    fn get_string(&mut self)
-}
+    fn in_bounds(&mut self, index: usize) -> bool {
+        if index < self.input_len {
+            return true;
+        }
 
-// pub fn tokenizer(input: String) -> Vec<Token> {
-//     let mut tokens: Vec<Token> = Vec::new();
-//     let mut buffer: Vec<&str> = Vec::new();
-//     for c in input.chars().into_iter().peekable() {
-//         match c {
-//             '!' => tokens.push(Token{
-//                 token_type: TokenType::Bang,
-//                 value: None
-//             }),
-//             '|' => tokens.push(Token{
-//                 token_type: TokenType::Pipe, 
-//                 value: None
-//             }),
-//             _ => {
-//                 panic!("unknown character");
-//             }
-//         }
-//     }
-//     println!("{:?}", tokens);
-    
-//     return tokens;
-// }
+        return false;
+    }
+
+    fn at_eol(&mut self) -> bool { // end of line
+        if self.index + 1 == self.input_len {
+            return true;
+        }
+
+        return false;
+    }
+
+    fn peek(&mut self, index: usize) -> Option<char> {
+        if !self.in_bounds(self.index + index) {
+            return None;
+        }
+        
+        return Some(self.input[self.index + index]);
+    }
+
+    fn skip(&mut self, index: usize) -> bool {
+        if !self.in_bounds(self.index + index) {
+            return false;
+        }
+
+        self.index += index;
+        self.curr = Some(self.input[self.index]);
+        return true;
+    }
+}
