@@ -1,20 +1,20 @@
-#[derive(Debug)]
-enum TokenType {
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenType {
     DoubleQuote,
     SingleQuote,
     Bang, 
     Pipe,
-    SingleHyphen,
-    DoubleHyphen,
+    // SingleHyphen,
+    // DoubleHyphen,
     Space,
     EscapedCharacter,
     StringLiteral
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
-    token_type: TokenType,
-    value: Option<String>
+    pub token_type: TokenType,
+    pub value: Option<String>
 }
 
 #[derive(Debug)]
