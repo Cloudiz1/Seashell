@@ -6,5 +6,6 @@
 using namespace std;
 
 vector<Token> tokenize(string input);
-int read_string(string input, int curr, string* buffer);
+Token create_token(TokenType type, string input);
+int read_string(string* buffer, string input, int curr);
 void print_tokens(vector<Token> input);
