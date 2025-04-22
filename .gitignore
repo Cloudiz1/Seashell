@@ -1,2 +1,5 @@
-bak
-*.exe
+Z3/.zig-cache
+.bak
+Z3/src/*.bak
+.README
+paradigms.md
