@@ -92,7 +92,7 @@ pub const Token = union(enum) {
     Unknown: u8
 };
 
-const Tokenizer = struct {
+pub const Tokenizer = struct {
     i: u8,
     input: []const u8,
     out: std.ArrayList(Token),
@@ -227,16 +227,14 @@ const Tokenizer = struct {
     }
 
     pub fn deinit(self: *Tokenizer) void {
-        std.debug.print("a", .{});
         for (self.out.items) |token| {
-            if (token == .Literal) |str| {
-                std.debug.print("{s}", str);
-                str.deinit();
+            switch (token) { // frees strings since i had to heap allocate from a buffer D:
+                .Literal => |str| allocator.free(str),
+                else => {}
             }
         }
 
         self.out.deinit();
-        self.deinit();
     }
 };
 

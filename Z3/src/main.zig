@@ -15,10 +15,16 @@ pub fn main() !void {
         return; 
     };
 
-    const tokens = try lexer.tokenize(result);
-    util.printTokens(tokens);
-    defer tokens.deinit();
-    
-    // const input = buffer[0..result.len];
-    // try stdout.print("{s}\n", .{result});
+    var tokenizer = lexer.Tokenizer{
+        .i = 0,
+        .input = result,
+        .out = std.ArrayList(lexer.Token).init(allocator)
+    };
+
+    tokenizer.init();
+    const tokens = try tokenizer.tokenize();
+    // util.printTokens(tokens);
+    _ = tokens;
+
+    tokenizer.deinit();
 }
