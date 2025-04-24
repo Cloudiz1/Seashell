@@ -1,5 +1,5 @@
-Z3/.zig-cache
+.zig-cache
 .bak
-Z3/src/*.bak
+src/*.bak
 .README
 paradigms.md
