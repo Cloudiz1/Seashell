@@ -4,6 +4,7 @@ const stdin = std.io.getStdIn().reader();
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 
+const util = @import("util.zig");
 const lexer = @import("lexer.zig");
 
 pub fn main() !void {
@@ -15,6 +16,7 @@ pub fn main() !void {
     };
 
     const tokens = try lexer.tokenize(result);
+    util.printTokens(tokens);
     defer tokens.deinit();
     
     // const input = buffer[0..result.len];

@@ -4,7 +4,7 @@ const stdout = std.io.getStdOut().writer();
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 
-const Token = union(enum) {
+pub const Token = union(enum) {
     // general syntax
     LParen,
     RParen,
@@ -82,10 +82,14 @@ const Token = union(enum) {
     Ampersand, // bitwise AND; shell background process (a & b); (command &)
     Pipe, // bitwise or; Piping (a | b), (command | command)
     // Bang, // bang; not (!var), (!command)
-    BangNotEqual, // can be ! (not), != (if not equal), or not then assign
+    BangEqual, // can be ! (not), != (if not equal), or not then assign
 
     Literal: []const u8,
     EscapedChar: u8,
+    Space,
+
+    EOF,
+    Unknown: u8
 };
 
 const Tokenizer = struct {
@@ -105,16 +109,6 @@ const Tokenizer = struct {
         return self.input[self.i + 1];
     }
 
-    fn printTokens(input: std.ArrayList(Token)) void {
-        for (input.items) |token| {
-            switch (token) {
-                .Literal => |str| std.debug.print("Literal: {s}\n", .{str}),
-                .EscapedChar => |c| std.debug.print("EscapedChar: {s}\n", .{&[1]u8 {c}}),
-                else => std.debug.print("{s}\n", .{@tagName(token)})
-            }
-        }
-    }
-
     fn xOrxEqual(self: *Tokenizer, T1: Token, T2: Token) Token {
         var T = T1;
         if (self.peek()) |c| {
@@ -127,10 +121,27 @@ const Tokenizer = struct {
         return T;
     }
 
+    fn isDouble(self: *Tokenizer, c1: u8) bool {
+        if(self.peek()) |c2| {
+            if (c1 == c2) {
+                self.i += 1;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     pub fn tokenize(self: *Tokenizer) !std.ArrayList(Token) {
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+
         while (self.i < self.input.len) {
             var T: ?Token = null;
-            switch (self.input[self.i]) {
+            var scanningLiteral: bool = false;
+            const currC = self.input[self.i];
+
+            switch (currC) {
                 '(' => T = Token.LParen,
                 ')' => T = Token.RParen,
                 '[' => T = Token.LBracket,
@@ -148,32 +159,84 @@ const Tokenizer = struct {
                         T = Token{.EscapedChar = c};
                         self.i += 1;
                     } else {
-                        // try out.append(Token{.Literal = "\\"});
                         T = Token{.Literal = "\\"};
                     }
                 },
-                '+' => T = self.xOrxEqual(Token.Plus, Token.PlusEqual),
-                '-' => T = self.xOrxEqual(Token.Minus, Token.MinusEqual),
+                '+' => {
+                    T = self.xOrxEqual(Token.Plus, Token.PlusEqual);
+                    if (self.isDouble('+')) { T = Token.PlusPlus; }
+                },
+                '-' => {
+                    T = self.xOrxEqual(Token.Minus, Token.MinusEqual);
+                    if (self.isDouble('-')) { T = Token.MinusMinus; }
+                },
                 '*' => T = self.xOrxEqual(Token.Star, Token.StarEqual),
                 '/' => T = self.xOrxEqual(Token.Slash, Token.SlashEqual),
                 '%' => T = self.xOrxEqual(Token.Mod, Token.ModEqual),
-                '&' => T = self.xOrxEqual(Token.Ampersand, Token.ANDEqual),
-                '|' => T = self.xOrxEqual(Token.Pipe, Token.OREqual),
+                '&' => {
+                    T = self.xOrxEqual(Token.Ampersand, Token.ANDEqual);
+                    if (self.isDouble('&')) { T = Token.IF_AND; }
+                },
+                '|' => {
+                    T = self.xOrxEqual(Token.Pipe, Token.ANDEqual);
+                    if (self.isDouble('|')) { T = Token.IF_OR; }
+                },
                 '^' => T = self.xOrxEqual(Token.XOR, Token.XOREqual),
-                '!' => T = self.xOrxEqual(Token.NOT, Token.BangNotEqual),
+                '!' => T = self.xOrxEqual(Token.NOT, Token.BangEqual),
                 '=' => T = self.xOrxEqual(Token.Equal, Token.IF_Equal),
-                else => {}
+                '<' => { // < <= << <<=
+                    T = self.xOrxEqual(Token.LeftCarrot, Token.LE);
+                    if (self.isDouble('<')) {
+                         T = self.xOrxEqual(Token.LSHIFT, Token.LSHIFTEqual); 
+                    }
+                },
+                '>' => { // > >= >> >>=
+                    T = self.xOrxEqual(Token.RightCarrot, Token.GE);
+                    if (self.isDouble('>')) {
+                         T = self.xOrxEqual(Token.DoubleRightCarrot, Token.RSHIFTEqual); 
+                    }
+                },
+                ' ' => T = Token.Space,
+                'a'...'z', '@'...'Z', '0'...'9', '\n', '\r', '\t', '`', '~' => {
+                    try buffer.append(currC);
+
+                    if (self.peek()) |c| { // make sure next char fits this case as well
+                        scanningLiteral = switch(c) {
+                            'a'...'z', '@'...'Z', '0'...'9', '\n', '\r', '\t', '`', '~' => true,
+                            else => false
+                        };
+                    }
+                },
+                else => T = Token{.Unknown  = currC}
             }
 
             if (T) |token| {
                 try self.out.append(token);
             }
 
+            if (!scanningLiteral and buffer.items.len != 0) {
+                try self.out.append(Token{.Literal = try allocator.dupe(u8, buffer.items)});
+                buffer.clearAndFree();
+            }
+
             self.i += 1;
         }
 
-        printTokens(self.out);
+        try self.out.append(Token.EOF);
         return self.out;
+    }
+
+    pub fn deinit(self: *Tokenizer) void {
+        std.debug.print("a", .{});
+        for (self.out.items) |token| {
+            if (token == .Literal) |str| {
+                std.debug.print("{s}", str);
+                str.deinit();
+            }
+        }
+
+        self.out.deinit();
+        self.deinit();
     }
 };
 
@@ -186,7 +249,4 @@ pub fn tokenize(input: []const u8) !std.ArrayList(Token) {
 
     tokenizer.init();
     return tokenizer.tokenize();
-    // const T: ?Token = null;
-    // return T;
-    // return tokenizer.out;
 }
