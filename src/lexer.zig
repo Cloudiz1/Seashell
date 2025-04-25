@@ -1,8 +1,8 @@
 const std = @import("std");
-const stdout = std.io.getStdOut().writer();
+// const stdout = std.io.getStdOut().writer();
 // const stdin = std.io.getStdIn().reader();
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-const allocator = gpa.allocator();
+// var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+// const allocator = gpa.allocator();
 
 pub const Token = union(enum) {
     // general syntax
@@ -22,16 +22,18 @@ pub const Token = union(enum) {
     DoubleQuote,
     SingleQuote,
 
-    // keywords (will probably end up saving these for a parser)
-    // If,
-    // Else,
-    // Switch,
-    // Case,
-    // While,
-    // Do,
-    // For,
-    // Break,
-    // Return,
+    // keywords
+    If,
+    Else,
+    Switch,
+    Case,
+    While,
+    Do,
+    For,
+    Break,
+    Return,
+    True,
+    False,
 
     // arithmetic
     Plus,
@@ -96,9 +98,19 @@ pub const Tokenizer = struct {
     i: u8,
     input: []const u8,
     out: std.ArrayList(Token),
+    allocator: std.mem.Allocator,
 
-    pub fn init(self: *Tokenizer) void {
-        errdefer self.out.deinit();
+    pub fn init(input: []const u8, allocator: std.mem.Allocator) Tokenizer {
+        const tokenizer = Tokenizer{
+            .i = 0,
+            .input = input,
+            .out = std.ArrayList(Token).init(allocator),
+            .allocator = allocator
+        };
+
+        // errdefer self.deinit();
+
+        return tokenizer;
     }
 
     fn peek(self: *Tokenizer) ?u8 {
@@ -132,9 +144,24 @@ pub const Tokenizer = struct {
         return false;
     }
 
+    // fn isKeyWord(self: *Tokenizer)
+
     pub fn tokenize(self: *Tokenizer) !std.ArrayList(Token) {
-        var buffer = std.ArrayList(u8).init(allocator);
+        var buffer = std.ArrayList(u8).init(self.allocator);
         defer buffer.deinit();
+
+        var map = std.StringHashMap(Token).init(self.allocator);
+        try map.put("if", Token.If);
+        try map.put("else", Token.Else);
+        try map.put("switch", Token.Switch);
+        try map.put("case", Token.Case);
+        try map.put("while", Token.While);
+        try map.put("do", Token.Do);
+        try map.put("for", Token.For);
+        try map.put("break", Token.Break);
+        try map.put("return", Token.Return);
+        try map.put("true", Token.True);
+        try map.put("false", Token.False);
 
         while (self.i < self.input.len) {
             var T: ?Token = null;
@@ -210,13 +237,18 @@ pub const Tokenizer = struct {
                 else => T = Token{.Unknown  = currC}
             }
 
-            if (T) |token| {
-                try self.out.append(token);
+            if (!scanningLiteral and buffer.items.len != 0) {
+                if (map.contains(buffer.items)) {
+                    T = map.get(buffer.items);
+                } else {
+                    T = Token{.Literal = try self.allocator.dupe(u8, buffer.items)};
+                }
+                
+                buffer.clearAndFree();
             }
 
-            if (!scanningLiteral and buffer.items.len != 0) {
-                try self.out.append(Token{.Literal = try allocator.dupe(u8, buffer.items)});
-                buffer.clearAndFree();
+            if (T) |token| {
+                try self.out.append(token);
             }
 
             self.i += 1;
@@ -229,7 +261,7 @@ pub const Tokenizer = struct {
     pub fn deinit(self: *Tokenizer) void {
         for (self.out.items) |token| {
             switch (token) { // frees strings since i had to heap allocate from a buffer D:
-                .Literal => |str| allocator.free(str),
+                .Literal => |str| self.allocator.free(str),
                 else => {}
             }
         }
@@ -237,14 +269,3 @@ pub const Tokenizer = struct {
         self.out.deinit();
     }
 };
-
-pub fn tokenize(input: []const u8) !std.ArrayList(Token) {
-    var tokenizer = Tokenizer{
-        .i = 0,
-        .input = input,
-        .out = std.ArrayList(Token).init(allocator)
-    };
-
-    tokenizer.init();
-    return tokenizer.tokenize();
-}
