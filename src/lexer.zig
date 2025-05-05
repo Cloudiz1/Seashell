@@ -79,9 +79,9 @@ pub const Token = union(enum) {
     IF_OR, // ||
 
     // ambigous characters
-    LeftCarrot, // Less than; read file  (a < b); (Command < file) 
+    LeftCarrot, // Less than; read file  (a < b); (Command < file)
     RightCarrot, // Greater Than; write file (a > b); (Command > file)
-    DoubleRightCarrot, // bitshift right; concat to a file 
+    DoubleRightCarrot, // bitshift right; concat to a file
     Ampersand, // bitwise AND; shell background process (a & b); (command &)
     Pipe, // bitwise or; Piping (a | b), (command | command)
     // Bang, // bang; not (!var), (!command)
@@ -94,7 +94,7 @@ pub const Token = union(enum) {
     Space,
 
     EOF,
-    Unknown: u8
+    Unknown: u8,
 };
 
 pub const Tokenizer = struct {
@@ -104,12 +104,7 @@ pub const Tokenizer = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(input: []const u8, allocator: std.mem.Allocator) Tokenizer {
-        const tokenizer = Tokenizer{
-            .i = 0,
-            .input = input,
-            .out = std.ArrayList(Token).init(allocator),
-            .allocator = allocator
-        };
+        const tokenizer = Tokenizer{ .i = 0, .input = input, .out = std.ArrayList(Token).init(allocator), .allocator = allocator };
 
         // errdefer self.deinit();
 
@@ -137,7 +132,7 @@ pub const Tokenizer = struct {
     }
 
     fn isDouble(self: *Tokenizer, c1: u8) bool {
-        if(self.peek()) |c2| {
+        if (self.peek()) |c2| {
             if (c1 == c2) {
                 self.i += 1;
                 return true;
@@ -156,7 +151,7 @@ pub const Tokenizer = struct {
             if (c == delimiter) {
                 self.i += 1;
                 const s = try allocator.dupe(u8, buffer.items);
-                return Token{.QuotedString = s};
+                return Token{ .QuotedString = s };
             } else {
                 try buffer.append(c);
                 self.i += 1;
@@ -173,7 +168,7 @@ pub const Tokenizer = struct {
 
         try buffer.append(currC);
 
-        while(self.peek()) |c| {
+        while (self.peek()) |c| {
             switch (c) {
                 '0'...'9' => {
                     self.i += 1;
@@ -190,19 +185,37 @@ pub const Tokenizer = struct {
                 },
                 else => {
                     break;
-                }
+                },
             }
         }
 
         const s = try allocator.dupe(u8, buffer.items);
 
         if (float) {
-            return Token{.Float = try std.fmt.parseFloat(f32, s)};
+            return Token{ .Float = try std.fmt.parseFloat(f32, s) };
         } else {
-            return Token{.Int = try std.fmt.parseInt(i32, s, 10)};
+            return Token{ .Int = try std.fmt.parseInt(i32, s, 10) };
         }
     }
 
+    fn scanString(self: *Tokenizer, currC: u8, allocator: std.mem.Allocator) !Token {
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+
+        try buffer.append(currC);
+
+        while (self.peek()) |c| {
+            switch (c) {
+                'a'...'z', 'A'...'Z' => {
+                    self.i += 1;
+                    try buffer.append(c);
+                },
+                else => break,
+            }
+        }
+
+        return Token{ .Literal = try allocator.dupe(u8, buffer.items) };
+    }
     // fn isKeyWord(self: *Tokenizer)
 
     pub fn tokenize(self: *Tokenizer) !std.ArrayList(Token) {
@@ -242,30 +255,38 @@ pub const Tokenizer = struct {
                 ';' => T = Token.Semicolon,
                 '\\' => {
                     if (self.peek()) |c| {
-                        T = Token{.EscapedChar = c};
+                        T = Token{ .EscapedChar = c };
                         self.i += 1;
                     } else {
-                        T = Token{.Literal = "\\"};
+                        T = Token{ .Literal = "\\" };
                     }
                 },
                 '+' => {
                     T = self.xOrxEqual(Token.Plus, Token.PlusEqual);
-                    if (self.isDouble('+')) { T = Token.PlusPlus; }
+                    if (self.isDouble('+')) {
+                        T = Token.PlusPlus;
+                    }
                 },
                 '-' => {
                     T = self.xOrxEqual(Token.Minus, Token.MinusEqual);
-                    if (self.isDouble('-')) { T = Token.MinusMinus; }
+                    if (self.isDouble('-')) {
+                        T = Token.MinusMinus;
+                    }
                 },
                 '*' => T = self.xOrxEqual(Token.Star, Token.StarEqual),
                 '/' => T = self.xOrxEqual(Token.Slash, Token.SlashEqual),
                 '%' => T = self.xOrxEqual(Token.Mod, Token.ModEqual),
                 '&' => {
                     T = self.xOrxEqual(Token.Ampersand, Token.ANDEqual);
-                    if (self.isDouble('&')) { T = Token.IF_AND; }
+                    if (self.isDouble('&')) {
+                        T = Token.IF_AND;
+                    }
                 },
                 '|' => {
                     T = self.xOrxEqual(Token.Pipe, Token.ANDEqual);
-                    if (self.isDouble('|')) { T = Token.IF_OR; }
+                    if (self.isDouble('|')) {
+                        T = Token.IF_OR;
+                    }
                 },
                 '^' => T = self.xOrxEqual(Token.XOR, Token.XOREqual),
                 '!' => T = self.xOrxEqual(Token.NOT, Token.BangEqual),
@@ -273,13 +294,13 @@ pub const Tokenizer = struct {
                 '<' => { // < <= << <<=
                     T = self.xOrxEqual(Token.LeftCarrot, Token.LE);
                     if (self.isDouble('<')) {
-                         T = self.xOrxEqual(Token.LSHIFT, Token.LSHIFTEqual); 
+                        T = self.xOrxEqual(Token.LSHIFT, Token.LSHIFTEqual);
                     }
                 },
                 '>' => { // > >= >> >>=
                     T = self.xOrxEqual(Token.RightCarrot, Token.GE);
                     if (self.isDouble('>')) {
-                         T = self.xOrxEqual(Token.DoubleRightCarrot, Token.RSHIFTEqual); 
+                        T = self.xOrxEqual(Token.DoubleRightCarrot, Token.RSHIFTEqual);
                     }
                 },
                 ' ' => T = Token.Space,
@@ -289,16 +310,19 @@ pub const Tokenizer = struct {
                 '0'...'9' => {
                     T = try self.scanNumberOrFloat(currC, self.allocator);
                 },
-                else => T = Token{.Unknown = currC}
+                'a'...'z', 'A'...'Z' => {
+                    T = try self.scanString(currC, self.allocator);
+                },
+                else => T = Token{ .Unknown = currC },
             }
 
             if (!scanningLiteral and buffer.items.len != 0) {
                 if (map.contains(buffer.items)) {
                     T = map.get(buffer.items);
                 } else {
-                    T = Token{.Literal = try self.allocator.dupe(u8, buffer.items)};
+                    T = Token{ .Literal = try self.allocator.dupe(u8, buffer.items) };
                 }
-                
+
                 buffer.clearAndFree();
             }
 
@@ -317,7 +341,7 @@ pub const Tokenizer = struct {
         for (self.out.items) |token| {
             switch (token) { // frees strings since i had to heap allocate from a buffer D:
                 .Literal => |str| self.allocator.free(str),
-                else => {}
+                else => {},
             }
         }
 
