@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 // const stdout = std.io.getStdOut().writer();
 // const stdin = std.io.getStdIn().reader();
 // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -85,9 +86,11 @@ pub const Token = union(enum) {
     Pipe, // bitwise or; Piping (a | b), (command | command)
     // Bang, // bang; not (!var), (!command)
     BangEqual, // can be ! (not), != (if not equal), or not then assign
-
+    QuotedString: []const u8,
     Literal: []const u8,
     EscapedChar: u8,
+    Int: i32,
+    Float: f32,
     Space,
 
     EOF,
@@ -144,6 +147,62 @@ pub const Tokenizer = struct {
         return false;
     }
 
+    fn scanQuoted(self: *Tokenizer, delimiter: u8, allocator: std.mem.Allocator) !Token {
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+
+        while (self.peek()) |c| {
+            // std.debug.print("{}", .{@TypeOf(delimiter)});
+            if (c == delimiter) {
+                self.i += 1;
+                const s = try allocator.dupe(u8, buffer.items);
+                return Token{.QuotedString = s};
+            } else {
+                try buffer.append(c);
+                self.i += 1;
+            }
+        }
+
+        return error.missingEndQuote;
+    }
+
+    fn scanNumberOrFloat(self: *Tokenizer, currC: u8, allocator: std.mem.Allocator) !Token {
+        var float: bool = false;
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+
+        try buffer.append(currC);
+
+        while(self.peek()) |c| {
+            switch (c) {
+                '0'...'9' => {
+                    self.i += 1;
+                    try buffer.append(c);
+                },
+                '.' => {
+                    if (!float) {
+                        self.i += 1;
+                        try buffer.append(c);
+                        float = true;
+                    } else { // two dots in one float which of course is non sensical.
+                        return error.ImproperFloatSyntax;
+                    }
+                },
+                else => {
+                    break;
+                }
+            }
+        }
+
+        const s = try allocator.dupe(u8, buffer.items);
+
+        if (float) {
+            return Token{.Float = try std.fmt.parseFloat(f32, s)};
+        } else {
+            return Token{.Int = try std.fmt.parseInt(i32, s, 10)};
+        }
+    }
+
     // fn isKeyWord(self: *Tokenizer)
 
     pub fn tokenize(self: *Tokenizer) !std.ArrayList(Token) {
@@ -151,6 +210,8 @@ pub const Tokenizer = struct {
         defer buffer.deinit();
 
         var map = std.StringHashMap(Token).init(self.allocator);
+        defer map.deinit();
+
         try map.put("if", Token.If);
         try map.put("else", Token.Else);
         try map.put("switch", Token.Switch);
@@ -165,7 +226,7 @@ pub const Tokenizer = struct {
 
         while (self.i < self.input.len) {
             var T: ?Token = null;
-            var scanningLiteral: bool = false;
+            const scanningLiteral: bool = false;
             const currC = self.input[self.i];
 
             switch (currC) {
@@ -179,8 +240,6 @@ pub const Tokenizer = struct {
                 ',' => T = Token.Comma,
                 '$' => T = Token.Dollar,
                 ';' => T = Token.Semicolon,
-                '\"' => T = Token.DoubleQuote,
-                '\'' => T = Token.SingleQuote,
                 '\\' => {
                     if (self.peek()) |c| {
                         T = Token{.EscapedChar = c};
@@ -224,17 +283,13 @@ pub const Tokenizer = struct {
                     }
                 },
                 ' ' => T = Token.Space,
-                'a'...'z', '@'...'Z', '0'...'9', '\n', '\r', '\t', '`', '~' => {
-                    try buffer.append(currC);
-
-                    if (self.peek()) |c| { // make sure next char fits this case as well
-                        scanningLiteral = switch(c) {
-                            'a'...'z', '@'...'Z', '0'...'9', '\n', '\r', '\t', '`', '~' => true,
-                            else => false
-                        };
-                    }
+                '\"', '\'' => {
+                    T = try self.scanQuoted(currC, self.allocator);
                 },
-                else => T = Token{.Unknown  = currC}
+                '0'...'9' => {
+                    T = try self.scanNumberOrFloat(currC, self.allocator);
+                },
+                else => T = Token{.Unknown = currC}
             }
 
             if (!scanningLiteral and buffer.items.len != 0) {
