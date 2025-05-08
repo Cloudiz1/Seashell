@@ -13,13 +13,12 @@ pub fn main() !void {
     try stdout.print("> ", .{});
     const result = stdin.readUntilDelimiter(&buffer, '\n') catch {
         try stdout.print("Input must be less than 8192 characters.\n", .{});
-        return; 
+        return;
     };
 
-    var tokenizer = lexer.Tokenizer.init(result, allocator);
-    const tokens = try tokenizer.tokenize();
+    var tokenizer = try lexer.Tokenizer.init(allocator);
+    const tokens = try tokenizer.tokenize(result);
     util.printTokens(tokens);
-    // _ = tokens;
 
     tokenizer.deinit();
 }

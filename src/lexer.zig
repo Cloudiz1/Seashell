@@ -101,10 +101,25 @@ pub const Tokenizer = struct {
     i: u8,
     input: []const u8,
     out: std.ArrayList(Token),
+    map: std.StringHashMap(Token),
     allocator: std.mem.Allocator,
 
-    pub fn init(input: []const u8, allocator: std.mem.Allocator) Tokenizer {
-        const tokenizer = Tokenizer{ .i = 0, .input = input, .out = std.ArrayList(Token).init(allocator), .allocator = allocator };
+    pub fn init(allocator: std.mem.Allocator) !Tokenizer {
+        var map = std.StringHashMap(Token).init(allocator);
+
+        try map.put("if", Token.If);
+        try map.put("else", Token.Else);
+        try map.put("switch", Token.Switch);
+        try map.put("case", Token.Case);
+        try map.put("while", Token.While);
+        try map.put("do", Token.Do);
+        try map.put("for", Token.For);
+        try map.put("break", Token.Break);
+        try map.put("return", Token.Return);
+        try map.put("true", Token.True);
+        try map.put("false", Token.False);
+
+        const tokenizer = Tokenizer{ .i = 0, .input = "", .out = std.ArrayList(Token).init(allocator), .map = map, .allocator = allocator };
 
         // errdefer self.deinit();
 
@@ -190,6 +205,7 @@ pub const Tokenizer = struct {
         }
 
         const s = try allocator.dupe(u8, buffer.items);
+        defer allocator.free(s);
 
         if (float) {
             return Token{ .Float = try std.fmt.parseFloat(f32, s) };
@@ -218,28 +234,14 @@ pub const Tokenizer = struct {
     }
     // fn isKeyWord(self: *Tokenizer)
 
-    pub fn tokenize(self: *Tokenizer) !std.ArrayList(Token) {
+    pub fn tokenize(self: *Tokenizer, input: []const u8) !std.ArrayList(Token) {
+        self.input = input;
+
         var buffer = std.ArrayList(u8).init(self.allocator);
         defer buffer.deinit();
 
-        var map = std.StringHashMap(Token).init(self.allocator);
-        defer map.deinit();
-
-        try map.put("if", Token.If);
-        try map.put("else", Token.Else);
-        try map.put("switch", Token.Switch);
-        try map.put("case", Token.Case);
-        try map.put("while", Token.While);
-        try map.put("do", Token.Do);
-        try map.put("for", Token.For);
-        try map.put("break", Token.Break);
-        try map.put("return", Token.Return);
-        try map.put("true", Token.True);
-        try map.put("false", Token.False);
-
         while (self.i < self.input.len) {
             var T: ?Token = null;
-            const scanningLiteral: bool = false;
             const currC = self.input[self.i];
 
             switch (currC) {
@@ -316,14 +318,15 @@ pub const Tokenizer = struct {
                 else => T = Token{ .Unknown = currC },
             }
 
-            if (!scanningLiteral and buffer.items.len != 0) {
-                if (map.contains(buffer.items)) {
-                    T = map.get(buffer.items);
-                } else {
-                    T = Token{ .Literal = try self.allocator.dupe(u8, buffer.items) };
+            if (T) |token| {
+                switch (token) {
+                    .Literal => |str| {
+                        if (self.map.contains(str)) {
+                            T = self.map.get(str);
+                        }
+                    },
+                    else => {},
                 }
-
-                buffer.clearAndFree();
             }
 
             if (T) |token| {
@@ -340,11 +343,14 @@ pub const Tokenizer = struct {
     pub fn deinit(self: *Tokenizer) void {
         for (self.out.items) |token| {
             switch (token) { // frees strings since i had to heap allocate from a buffer D:
-                .Literal => |str| self.allocator.free(str),
+                .Literal, .QuotedString => |val| self.allocator.free(val),
+                // .Int => |val| self.allocator.free(val),
+                // .Float => |val| self.allocator.free(val),
                 else => {},
             }
         }
 
         self.out.deinit();
+        self.map.deinit();
     }
 };
