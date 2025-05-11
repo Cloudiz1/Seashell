@@ -1,9 +1,5 @@
 const std = @import("std");
 const util = @import("util.zig");
-// const stdout = std.io.getStdOut().writer();
-// const stdin = std.io.getStdIn().reader();
-// var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-// const allocator = gpa.allocator();
 
 pub const Token = union(enum) {
     // general syntax
@@ -86,12 +82,13 @@ pub const Token = union(enum) {
     Pipe, // bitwise or; Piping (a | b), (command | command)
     // Bang, // bang; not (!var), (!command)
     BangEqual, // can be ! (not), != (if not equal), or not then assign
-    QuotedString: []const u8,
-    Literal: []const u8,
+    StringLiteral: []const u8,
+    Identifier: []const u8,
+    Bool: bool,
     EscapedChar: u8,
     Int: i32,
     Float: f32,
-    Space,
+    // Space,
 
     EOF,
     Unknown: u8,
@@ -116,8 +113,8 @@ pub const Tokenizer = struct {
         try map.put("for", Token.For);
         try map.put("break", Token.Break);
         try map.put("return", Token.Return);
-        try map.put("true", Token.True);
-        try map.put("false", Token.False);
+        try map.put("true", Token{ .Bool = true });
+        try map.put("false", Token{ .Bool = false });
 
         const tokenizer = Tokenizer{ .i = 0, .input = "", .out = std.ArrayList(Token).init(allocator), .map = map, .allocator = allocator };
 
@@ -166,7 +163,7 @@ pub const Tokenizer = struct {
             if (c == delimiter) {
                 self.i += 1;
                 const s = try allocator.dupe(u8, buffer.items);
-                return Token{ .QuotedString = s };
+                return Token{ .StringLiteral = s };
             } else {
                 try buffer.append(c);
                 self.i += 1;
@@ -214,7 +211,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn scanString(self: *Tokenizer, currC: u8, allocator: std.mem.Allocator) !Token {
+    fn scanStringIdentifier(self: *Tokenizer, currC: u8, allocator: std.mem.Allocator) !Token {
         var buffer = std.ArrayList(u8).init(allocator);
         defer buffer.deinit();
 
@@ -222,7 +219,7 @@ pub const Tokenizer = struct {
 
         while (self.peek()) |c| {
             switch (c) {
-                'a'...'z', 'A'...'Z' => {
+                'a'...'z', 'A'...'Z', '0'...'9', '_' => {
                     self.i += 1;
                     try buffer.append(c);
                 },
@@ -230,9 +227,8 @@ pub const Tokenizer = struct {
             }
         }
 
-        return Token{ .Literal = try allocator.dupe(u8, buffer.items) };
+        return Token{ .Identifier = try allocator.dupe(u8, buffer.items) };
     }
-    // fn isKeyWord(self: *Tokenizer)
 
     pub fn tokenize(self: *Tokenizer, input: []const u8) !std.ArrayList(Token) {
         self.input = input;
@@ -260,7 +256,7 @@ pub const Tokenizer = struct {
                         T = Token{ .EscapedChar = c };
                         self.i += 1;
                     } else {
-                        T = Token{ .Literal = "\\" };
+                        T = Token{ .StringLiteral = "\\" };
                     }
                 },
                 '+' => {
@@ -305,7 +301,7 @@ pub const Tokenizer = struct {
                         T = self.xOrxEqual(Token.DoubleRightCarrot, Token.RSHIFTEqual);
                     }
                 },
-                ' ' => T = Token.Space,
+                ' ' => {},
                 '\"', '\'' => {
                     T = try self.scanQuoted(currC, self.allocator);
                 },
@@ -313,16 +309,17 @@ pub const Tokenizer = struct {
                     T = try self.scanNumberOrFloat(currC, self.allocator);
                 },
                 'a'...'z', 'A'...'Z' => {
-                    T = try self.scanString(currC, self.allocator);
+                    T = try self.scanStringIdentifier(currC, self.allocator);
                 },
                 else => T = Token{ .Unknown = currC },
             }
 
             if (T) |token| {
                 switch (token) {
-                    .Literal => |str| {
+                    .Identifier => |str| {
                         if (self.map.contains(str)) {
                             T = self.map.get(str);
+                            self.allocator.free(str); // str was duped, we dont use it anymore, so we free
                         }
                     },
                     else => {},
@@ -343,7 +340,7 @@ pub const Tokenizer = struct {
     pub fn deinit(self: *Tokenizer) void {
         for (self.out.items) |token| {
             switch (token) { // frees strings since i had to heap allocate from a buffer D:
-                .Literal, .QuotedString => |val| self.allocator.free(val),
+                .StringLiteral, .Identifier => |val| self.allocator.free(val),
                 // .Int => |val| self.allocator.free(val),
                 // .Float => |val| self.allocator.free(val),
                 else => {},
@@ -354,3 +351,120 @@ pub const Tokenizer = struct {
         self.map.deinit();
     }
 };
+
+fn Token_test(tokens: std.ArrayList(Token), expectedTokens: std.ArrayList(Token)) !void {
+    const testing = std.testing;
+    try testing.expectEqual(tokens.items.len, expectedTokens.items.len);
+    for (tokens.items, expectedTokens.items) |token, expectedToken| {
+        switch (token) {
+            .Identifier => |val| try testing.expectEqualStrings(val, expectedToken.Identifier),
+            .StringLiteral => |val| try testing.expectEqualStrings(val, expectedToken.StringLiteral),
+            else => try testing.expectEqual(token, expectedToken),
+        }
+    }
+}
+
+test "single char tokens" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    const tokens = try tokenizer.tokenize("()[]{}.,$;");
+    defer tokenizer.deinit();
+
+    const expectedTokens = [_]Token{ Token.LParen, Token.RParen, Token.LBracket, Token.RBracket, Token.LCurly, Token.RCurly, Token.Dot, Token.Comma, Token.Dollar, Token.Semicolon, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
+
+test "single, double, or single equal tokens" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    defer tokenizer.deinit();
+    const tokens = try tokenizer.tokenize("+ ++ += * *= == ^ ^= < << <= <<=");
+
+    const expectedTokens = [_]Token{ Token.Plus, Token.PlusPlus, Token.PlusEqual, Token.Star, Token.StarEqual, Token.IF_Equal, Token.XOR, Token.XOREqual, Token.LeftCarrot, Token.LSHIFT, Token.LE, Token.LSHIFTEqual, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
+
+test "keywords" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    defer tokenizer.deinit();
+    const tokens = try tokenizer.tokenize("if else switch case while do for break return true false");
+
+    const expectedTokens = [_]Token{ Token.If, Token.Else, Token.Switch, Token.Case, Token.While, Token.Do, Token.For, Token.Break, Token.Return, Token{ .Bool = true }, Token{ .Bool = false }, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
+
+test "identifiers" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    defer tokenizer.deinit();
+    const tokens = try tokenizer.tokenize("abc123 abcdefghijklmnopqrstuvwxyz ABC");
+
+    const expectedTokens = [_]Token{ Token{ .Identifier = "abc123" }, Token{ .Identifier = "abcdefghijklmnopqrstuvwxyz" }, Token{ .Identifier = "ABC" }, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
+
+test "ints and floats" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    defer tokenizer.deinit();
+    const tokens = try tokenizer.tokenize("123 1.23");
+
+    const expectedTokens = [_]Token{ Token{ .Int = 123 }, Token{ .Float = 1.23 }, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
+
+test "escaped char" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    defer tokenizer.deinit();
+    const tokens = try tokenizer.tokenize("\\n");
+
+    const expectedTokens = [_]Token{ Token{ .EscapedChar = 'n' }, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
+
+test "string literals" {
+    const allocator = std.testing.allocator;
+
+    var tokenizer = try Tokenizer.init(allocator);
+    defer tokenizer.deinit();
+    const tokens = try tokenizer.tokenize("abc 123 \"abc 123 \\0\"");
+
+    const expectedTokens = [_]Token{ Token{ .Identifier = "abc" }, Token{ .Int = 123 }, Token{ .StringLiteral = "abc 123 \\0" }, Token.EOF };
+    var expectedTokensList = std.ArrayList(Token).init(allocator);
+    try expectedTokensList.appendSlice(&expectedTokens);
+    defer expectedTokensList.deinit();
+
+    try Token_test(tokens, expectedTokensList);
+}
