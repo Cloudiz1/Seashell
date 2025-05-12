@@ -154,7 +154,7 @@ pub const Tokenizer = struct {
         return false;
     }
 
-    fn scanQuoted(self: *Tokenizer, delimiter: u8, allocator: std.mem.Allocator) !Token {
+    fn scanStringLiteral(self: *Tokenizer, delimiter: u8, allocator: std.mem.Allocator) !Token {
         var buffer = std.ArrayList(u8).init(allocator);
         defer buffer.deinit();
 
@@ -211,7 +211,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn scanStringIdentifier(self: *Tokenizer, currC: u8, allocator: std.mem.Allocator) !Token {
+    fn scanIdentifier(self: *Tokenizer, currC: u8, allocator: std.mem.Allocator) !Token {
         var buffer = std.ArrayList(u8).init(allocator);
         defer buffer.deinit();
 
@@ -303,13 +303,13 @@ pub const Tokenizer = struct {
                 },
                 ' ' => {},
                 '\"', '\'' => {
-                    T = try self.scanQuoted(currC, self.allocator);
+                    T = try self.scanStringLiteral(currC, self.allocator);
                 },
                 '0'...'9' => {
                     T = try self.scanNumberOrFloat(currC, self.allocator);
                 },
                 'a'...'z', 'A'...'Z' => {
-                    T = try self.scanStringIdentifier(currC, self.allocator);
+                    T = try self.scanIdentifier(currC, self.allocator);
                 },
                 else => T = Token{ .Unknown = currC },
             }
@@ -341,8 +341,6 @@ pub const Tokenizer = struct {
         for (self.out.items) |token| {
             switch (token) { // frees strings since i had to heap allocate from a buffer D:
                 .StringLiteral, .Identifier => |val| self.allocator.free(val),
-                // .Int => |val| self.allocator.free(val),
-                // .Float => |val| self.allocator.free(val),
                 else => {},
             }
         }
